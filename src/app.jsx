@@ -4,8 +4,9 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Avatar, Icon } from './atoms.jsx';
 import { ChatAssistant } from './chat.jsx';
 import { Dashboard } from './dashboard.jsx';
-import { load, save, formatRelTime, PRIORITY_LABELS, STATUS_LABELS, STATUS_ORDER } from './data.js';
+import { load, save, signOut as signOutAuth, formatRelTime, PRIORITY_LABELS, STATUS_LABELS, STATUS_ORDER } from './data.js';
 import { Login } from './login.jsx';
+import { supabase } from './supabase.js';
 import { ProjectsPage } from './projects-page.jsx';
 import { TaskDrawer, TaskEditModal } from './task-drawer.jsx';
 import { TweaksPanel, TweakButton, TweakRadio, TweakSection, TweakToggle, useTweaks } from './tweaks-panel.jsx';
@@ -68,13 +69,27 @@ function pathForPage(page) {
 function useAppState() {
   const [state, setState] = useState(null);
   const [loadError, setLoadError] = useState(null);
-  useEffect(() => {
-    load()
-      .then(s => setState(s))
+
+  const refresh = useCallback(() => {
+    return load()
+      .then(s => { setState(s); setLoadError(null); return s; })
       .catch(e => { console.error(e); setLoadError(e); });
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    refresh();
+    const { data: listener } = supabase.auth.onAuthStateChange(() => {
+      if (mounted) refresh();
+    });
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
+  }, [refresh]);
+
   useEffect(() => { if (state) save(state); }, [state]);
-  return [state, setState, loadError];
+  return [state, setState, loadError, refresh];
 }
 
 function LoadingScreen({ message }) {
@@ -605,7 +620,7 @@ function Workspace({ state, setState, onLogout, tweaks }) {
 }
 
 export function App() {
-  const [state, setState, loadError] = useAppState();
+  const [state, setState, loadError, refresh] = useAppState();
 
   // Tweaks
   const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
@@ -618,12 +633,14 @@ export function App() {
   if (!state) return <LoadingScreen />;
 
   const currentUser = state.users.find(u => u.id === state.currentUserId);
-  const onLogout = () => setState({ ...state, currentUserId: null });
+  const onLogout = async () => {
+    try { await signOutAuth(); } catch (e) { console.error(e); }
+  };
 
   if (!currentUser) {
     return (
       <>
-        <Login state={state} setState={setState} />
+        <Login state={state} onAuthChanged={refresh} />
         <TweaksPanel title="Tweaks">
           <TweakSection label="Display">
             <TweakToggle label="Show admin AI chat" value={tweaks.showChat} onChange={v => setTweak("showChat", v)} />

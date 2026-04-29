@@ -10,8 +10,6 @@
 
 import { supabase } from './supabase.js';
 
-const SESSION_KEY = "myt-session-v1";
-
 // ---------- small utilities used across the UI ----------
 export const todayISO = () => new Date().toISOString().slice(0, 10);
 export const dayOffset = (n) => {
@@ -42,11 +40,10 @@ export const initials = (name) => {
 // ---------- DB load / save ----------
 let lastState = null;
 
-function emptyState() {
-  return { users: [], projects: [], tasks: [], notifications: [], currentUserId: null };
-}
-
 export async function load() {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const authUserId = sessionData.session?.user.id || null;
+
   const [usersRes, projectsRes, tasksRes, notifsRes] = await Promise.all([
     supabase.from("users").select("*"),
     supabase.from("projects").select("*"),
@@ -59,25 +56,21 @@ export async function load() {
   if (tasksRes.error)    console.error("[tasks] load:",         tasksRes.error);
   if (notifsRes.error)   console.error("[notifications] load:", notifsRes.error);
 
-  let session = {};
-  try { session = JSON.parse(localStorage.getItem(SESSION_KEY) || "{}"); } catch (_e) {}
+  const users = usersRes.data || [];
+  const me = authUserId ? users.find(u => u.auth_user_id === authUserId) : null;
 
   const state = {
-    users:         usersRes.data    || [],
+    users,
     projects:      projectsRes.data || [],
     tasks:         tasksRes.data    || [],
     notifications: notifsRes.data   || [],
-    currentUserId: session.currentUserId || null
+    currentUserId: me?.id || null
   };
   lastState = state;
   return state;
 }
 
 export function save(state) {
-  try {
-    localStorage.setItem(SESSION_KEY, JSON.stringify({ currentUserId: state.currentUserId }));
-  } catch (_e) {}
-
   if (!lastState) { lastState = state; return; }
 
   syncTable("users",         state.users,         lastState.users);
@@ -105,8 +98,37 @@ async function syncTable(table, current, prev) {
   }
 }
 
-export function reset() {
-  localStorage.removeItem(SESSION_KEY);
+export async function signInWithEmail(email, password) {
+  const { error } = await supabase.auth.signInWithPassword({
+    email: email.trim().toLowerCase(),
+    password
+  });
+  if (error) throw error;
+}
+
+export async function signUpFirstAdmin({ name, email, password }) {
+  const cleanEmail = email.trim().toLowerCase();
+  const { data, error } = await supabase.auth.signUp({ email: cleanEmail, password });
+  if (error) throw error;
+  const authUserId = data.user?.id;
+  if (!authUserId) throw new Error("Sign up did not return a user id. Confirm email may be enabled.");
+  const profile = {
+    id: "u-" + Date.now(),
+    auth_user_id: authUserId,
+    name: name.trim(),
+    email: cleanEmail,
+    password: "managed-by-supabase-auth",
+    role: "admin",
+    title: "Administrator"
+  };
+  const { error: insertError } = await supabase.from("users").insert(profile);
+  if (insertError) throw insertError;
+  return profile;
+}
+
+export async function signOut() {
+  const { error } = await supabase.auth.signOut();
+  if (error) throw error;
   lastState = null;
 }
 

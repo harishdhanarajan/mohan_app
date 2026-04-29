@@ -2,7 +2,8 @@
 
 import React from 'react';
 import { Avatar, Icon } from './atoms.jsx';
-import { todayISO } from './data.js';
+import { load, todayISO } from './data.js';
+import { supabase } from './supabase.js';
 
 export function UsersPage({ state, setState, onOpenTask, onNotify, onRequestConfirm }) {
   const [editing, setEditing] = React.useState(null);
@@ -70,23 +71,76 @@ export function UsersPage({ state, setState, onOpenTask, onNotify, onRequestConf
   );
 }
 
+async function reloadState(setState) {
+  try {
+    const next = await load();
+    setState(next);
+  } catch (e) {
+    console.error("reload after user change failed:", e);
+  }
+}
+
 function UserEditModal({ user, state, setState, onClose, onNotify, onRequestConfirm }) {
   const isNew = !user;
-  const [form, setForm] = React.useState(user ? { ...user } : {
-    id: "u-" + Date.now(),
+  const [form, setForm] = React.useState(user ? { ...user, password: "" } : {
     name: "", email: "", password: "",
     role: "user", title: ""
   });
+  const [busy, setBusy] = React.useState(false);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const save = () => {
-    if (!form.name.trim() || !form.email.trim() || !form.password.trim()) return;
-    const next = { ...state };
-    if (isNew) next.users = [...state.users, form];
-    else next.users = state.users.map(u => u.id === form.id ? form : u);
-    setState(next);
-    onClose();
+  const save = async () => {
+    if (busy) return;
+    if (!form.name.trim() || !form.email.trim()) return;
+    if (isNew && !form.password.trim()) return;
+
+    setBusy(true);
+    try {
+      if (isNew) {
+        const { data, error } = await supabase.functions.invoke("create-user", {
+          body: {
+            action: "create",
+            name: form.name.trim(),
+            email: form.email.trim().toLowerCase(),
+            password: form.password,
+            role: form.role,
+            title: form.title || ""
+          }
+        });
+        if (error) throw error;
+        if (data?.error) throw new Error(data.error);
+        await reloadState(setState);
+      } else {
+        if (form.password.trim()) {
+          const { data, error } = await supabase.functions.invoke("create-user", {
+            body: {
+              action: "update_password",
+              auth_user_id: user.auth_user_id,
+              password: form.password
+            }
+          });
+          if (error) throw error;
+          if (data?.error) throw new Error(data.error);
+        }
+        const { error: updErr } = await supabase
+          .from("users")
+          .update({
+            name: form.name.trim(),
+            email: form.email.trim().toLowerCase(),
+            role: form.role,
+            title: form.title || ""
+          })
+          .eq("id", form.id);
+        if (updErr) throw updErr;
+        await reloadState(setState);
+      }
+      onClose();
+    } catch (e) {
+      onNotify?.(e?.message || "Save failed.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const remove = () => {
@@ -99,9 +153,18 @@ function UserEditModal({ user, state, setState, onClose, onNotify, onRequestConf
       message: `Delete ${user.name}? Their tasks will remain but unassigned.`,
       confirmLabel: "Delete member",
       kind: "danger",
-      onConfirm: () => {
-        setState({ ...state, users: state.users.filter(u => u.id !== user.id) });
-        onClose();
+      onConfirm: async () => {
+        try {
+          const { data, error } = await supabase.functions.invoke("create-user", {
+            body: { action: "delete", auth_user_id: user.auth_user_id, profile_id: user.id }
+          });
+          if (error) throw error;
+          if (data?.error) throw new Error(data.error);
+          await reloadState(setState);
+          onClose();
+        } catch (e) {
+          onNotify?.(e?.message || "Delete failed.");
+        }
       }
     });
   };
@@ -126,12 +189,12 @@ function UserEditModal({ user, state, setState, onClose, onNotify, onRequestConf
           </div>
           <div className="field">
             <div className="field-label">Email</div>
-            <input className="field-input" type="email" value={form.email} onChange={e => set("email", e.target.value)} placeholder="Email address" />
+            <input className="field-input" type="email" value={form.email} onChange={e => set("email", e.target.value)} placeholder="harish@myt.com" />
           </div>
           <div className="row-2">
             <div className="field">
-              <div className="field-label">Password</div>
-              <input className="field-input" value={form.password} onChange={e => set("password", e.target.value)} />
+              <div className="field-label">{isNew ? "Password" : "New password (leave blank to keep)"}</div>
+              <input className="field-input" value={form.password} onChange={e => set("password", e.target.value)} placeholder={isNew ? "Initial password" : ""} />
             </div>
             <div className="field">
               <div className="field-label">Role</div>
@@ -144,11 +207,15 @@ function UserEditModal({ user, state, setState, onClose, onNotify, onRequestConf
         </div>
         <div className="modal-foot">
           {!isNew && user.role !== "admin" && (
-            <button className="btn btn-ghost" style={{ color: "var(--danger)" }} onClick={remove}>Delete user</button>
+            <button className="btn btn-ghost" style={{ color: "var(--danger)" }} onClick={remove} disabled={busy}>Delete user</button>
           )}
           <div style={{ flex: 1 }}></div>
-          <button className="btn btn-primary" onClick={save} disabled={!form.name.trim() || !form.email.trim() || !form.password.trim()}>
-            {isNew ? "Create user" : "Save changes"}
+          <button
+            className="btn btn-primary"
+            onClick={save}
+            disabled={busy || !form.name.trim() || !form.email.trim() || (isNew && !form.password.trim())}
+          >
+            {busy ? "Working…" : isNew ? "Create user" : "Save changes"}
           </button>
         </div>
       </div>

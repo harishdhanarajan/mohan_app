@@ -1,42 +1,42 @@
 import React from 'react';
+import { signInWithEmail, signUpFirstAdmin } from './data.js';
 
-export function Login({ state, setState }) {
+export function Login({ state, onAuthChanged }) {
   const isSetup = state.users.length === 0;
   const [name, setName] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState("");
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e && e.preventDefault();
+    if (busy) return;
+    setErr("");
 
     if (isSetup) {
       if (!name.trim() || !email.trim() || !password.trim()) {
         setErr("Name, email, and password are required.");
         return;
       }
-
-      const admin = {
-        id: "u-" + Date.now(),
-        name: name.trim(),
-        email: email.trim(),
-        password,
-        role: "admin",
-        title: "Administrator"
-      };
-      setState({ ...state, users: [admin], currentUserId: admin.id });
+    } else if (!email.trim() || !password.trim()) {
+      setErr("Email and password are required.");
       return;
     }
 
-    const user = state.users.find(user =>
-      user.email.toLowerCase() === email.trim().toLowerCase() &&
-      user.password === password
-    );
-    if (!user) {
-      setErr("Invalid email or password.");
-      return;
+    setBusy(true);
+    try {
+      if (isSetup) {
+        await signUpFirstAdmin({ name, email, password });
+      } else {
+        await signInWithEmail(email, password);
+      }
+      onAuthChanged?.();
+    } catch (error) {
+      setErr(error?.message || "Authentication failed.");
+    } finally {
+      setBusy(false);
     }
-    setState({ ...state, currentUserId: user.id });
   };
 
   return (
@@ -101,8 +101,8 @@ export function Login({ state, setState }) {
             }}>{err}</div>
           )}
 
-          <button type="submit" className="btn btn-primary btn-block">
-            {isSetup ? "Create workspace" : "Sign in"}
+          <button type="submit" className="btn btn-primary btn-block" disabled={busy}>
+            {busy ? "Working…" : isSetup ? "Create workspace" : "Sign in"}
           </button>
         </form>
       </div>
