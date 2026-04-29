@@ -87,6 +87,8 @@ function UserEditModal({ user, state, setState, onClose, onNotify, onRequestConf
     role: "user", title: ""
   });
   const [busy, setBusy] = React.useState(false);
+  const [deletePromptOpen, setDeletePromptOpen] = React.useState(false);
+  const [deleteSecret, setDeleteSecret] = React.useState("");
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -143,9 +145,19 @@ function UserEditModal({ user, state, setState, onClose, onNotify, onRequestConf
     }
   };
 
-  const remove = () => {
+  const requestRemove = () => {
     if (user.role === "admin") {
       onNotify?.("Cannot delete the admin account.");
+      return;
+    }
+    setDeleteSecret("");
+    setDeletePromptOpen(true);
+  };
+
+  const remove = () => {
+    if (busy) return;
+    if (!deleteSecret.trim()) {
+      onNotify?.("Enter the secret code to delete this team member.");
       return;
     }
     onRequestConfirm?.({
@@ -155,8 +167,14 @@ function UserEditModal({ user, state, setState, onClose, onNotify, onRequestConf
       kind: "danger",
       onConfirm: async () => {
         try {
+          setBusy(true);
           const { data, error } = await supabase.functions.invoke("create-user", {
-            body: { action: "delete", auth_user_id: user.auth_user_id, profile_id: user.id }
+            body: {
+              action: "delete",
+              auth_user_id: user.auth_user_id,
+              profile_id: user.id,
+              delete_secret: deleteSecret
+            }
           });
           if (error) throw error;
           if (data?.error) throw new Error(data.error);
@@ -164,6 +182,8 @@ function UserEditModal({ user, state, setState, onClose, onNotify, onRequestConf
           onClose();
         } catch (e) {
           onNotify?.(e?.message || "Delete failed.");
+        } finally {
+          setBusy(false);
         }
       }
     });
@@ -204,10 +224,31 @@ function UserEditModal({ user, state, setState, onClose, onNotify, onRequestConf
               </select>
             </div>
           </div>
+          {!isNew && deletePromptOpen && (
+            <div className="delete-code-box">
+              <div className="field-label">Secret code required</div>
+              <input
+                className="field-input"
+                type="password"
+                value={deleteSecret}
+                onChange={e => setDeleteSecret(e.target.value)}
+                placeholder="Enter secret code"
+                autoFocus
+              />
+              <div className="field-help">This code is verified by Supabase before the member is deleted.</div>
+            </div>
+          )}
         </div>
         <div className="modal-foot">
           {!isNew && user.role !== "admin" && (
-            <button className="btn btn-ghost" style={{ color: "var(--danger)" }} onClick={remove} disabled={busy}>Delete user</button>
+            deletePromptOpen ? (
+              <>
+                <button className="btn btn-ghost" onClick={() => { setDeletePromptOpen(false); setDeleteSecret(""); }} disabled={busy}>Cancel delete</button>
+                <button className="btn btn-danger" onClick={remove} disabled={busy || !deleteSecret.trim()}>Confirm delete</button>
+              </>
+            ) : (
+              <button className="btn btn-ghost" style={{ color: "var(--danger)" }} onClick={requestRemove} disabled={busy}>Delete user</button>
+            )
           )}
           <div style={{ flex: 1 }}></div>
           <button

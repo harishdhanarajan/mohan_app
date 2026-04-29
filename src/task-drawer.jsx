@@ -12,10 +12,11 @@ export function TaskDrawer({ taskId, state, setState, onClose, currentUser, onSe
   if (!task) return null;
 
   const assignee = state.users.find(u => u.id === task.assigneeId);
+  const adminUser = currentUser.role === "admin" ? currentUser : state.users.find(u => u.role === "admin");
   const project = state.projects.find(p => p.id === task.projectId);
   const isAdmin = currentUser.role === "admin";
   const isDone = task.status === "done";
-  const selectableStatuses = STATUS_ORDER.filter(s => s !== "blocked");
+  const selectableStatuses = STATUS_ORDER;
 
   const updateTask = (patch, activityText) => {
     const next = { ...state };
@@ -79,15 +80,29 @@ export function TaskDrawer({ taskId, state, setState, onClose, currentUser, onSe
       return;
     }
     if (s === "done" && !(task.comments || []).length) {
-      onNotify?.("Add at least one comment before closing this task as done.");
+      onNotify?.("Add at least one comment before marking this task as done.");
       return;
     }
-    updateTask({ status: s }, `moved status to ${STATUS_LABELS[s]}`);
+    if (s === "review" && !adminUser) {
+      onNotify?.("No admin user is available to receive review tasks.");
+      return;
+    }
+    const firstUser = state.users.find(u => u.role === "user");
+    const returningFromReview = task.status === "review" && s !== "review" && assignee?.role === "admin" && firstUser;
+    updateTask(
+      s === "review"
+        ? { status: s, assigneeId: adminUser.id }
+        : { status: s, ...(returningFromReview ? { assigneeId: firstUser.id } : {}) },
+      returningFromReview ? `moved status to ${STATUS_LABELS[s]} and reassigned to ${firstUser.name}` : `moved status to ${STATUS_LABELS[s]}`
+    );
   };
 
   const reassignToAdmin = () => {
-    const admin = state.users.find(u => u.role === "admin");
-    updateTask({ assigneeId: admin.id }, `reassigned to ${admin.name}`);
+    if (!adminUser) {
+      onNotify?.("No admin user is available to receive this task.");
+      return;
+    }
+    updateTask({ assigneeId: adminUser.id }, `reassigned to ${adminUser.name}`);
   };
 
   const deleteTask = () => {
@@ -141,7 +156,7 @@ export function TaskDrawer({ taskId, state, setState, onClose, currentUser, onSe
           <div className="kv-grid">
             <div className="k">Status</div>
             <div className="v">
-              {!isDone && task.status !== "blocked" && (isAdmin || currentUser.id === task.assigneeId) ? (
+              {!isDone && (isAdmin || currentUser.id === task.assigneeId) ? (
                 <select className="field-input" style={{ width: "auto", padding: "5px 8px", fontSize: 13 }}
                   value={task.status} onChange={e => setStatus(e.target.value)}>
                   {selectableStatuses.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
@@ -271,12 +286,9 @@ export function TaskDrawer({ taskId, state, setState, onClose, currentUser, onSe
               <button className="btn btn-primary" onClick={() => setStatus("done")}>
                 <Icon name="check" size={14} /> Mark as done
               </button>
-              {task.status !== "review" && task.status !== "blocked" && (
-                <button className="btn btn-secondary" onClick={() => setStatus("blocked")}>
-                  Mark blocked
-                </button>
-              )}
-              <button className="btn btn-ghost" onClick={reassignToAdmin}>Reassign to admin</button>
+              <button className="btn btn-ghost" onClick={reassignToAdmin}>
+                Reassign to {adminUser?.name || "reviewer"}
+              </button>
             </>
           )}
           {!isDone && isAdmin && (
@@ -294,12 +306,14 @@ export function TaskDrawer({ taskId, state, setState, onClose, currentUser, onSe
 
 export function TaskEditModal({ task, state, setState, onClose, currentUser, onNotify }) {
   const isNew = !task;
-  const selectableStatuses = STATUS_ORDER.filter(s => s !== "blocked");
+  const selectableStatuses = STATUS_ORDER;
+  const adminUser = currentUser.role === "admin" ? currentUser : state.users.find(u => u.role === "admin");
+  const userAssignees = state.users.filter(u => u.role === "user");
   const [form, setForm] = React.useState(task ? { ...task } : {
     id: "t-" + Date.now(),
     title: "",
     description: "",
-    assigneeId: state.users.find(u => u.role === "user")?.id || "",
+    assigneeId: userAssignees[0]?.id || "",
     projectId: state.projects[0]?.id || null,
     priority: "medium",
     status: "todo",
@@ -313,20 +327,43 @@ export function TaskEditModal({ task, state, setState, onClose, currentUser, onN
   const [tagInput, setTagInput] = React.useState((task?.tags || []).join(", "));
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const selectedStatus = selectableStatuses.includes(form.status) ? form.status : "todo";
+  const assigneeOptions = selectedStatus === "review" && adminUser ? [adminUser] : userAssignees;
+
+  const setStatus = (nextStatus) => {
+    const normalizedStatus = selectableStatuses.includes(nextStatus) ? nextStatus : "todo";
+    setForm(f => {
+      if (normalizedStatus === "review") {
+        return { ...f, status: normalizedStatus, assigneeId: adminUser?.id || f.assigneeId };
+      }
+      const selectedUserExists = userAssignees.some(u => u.id === f.assigneeId);
+      return {
+        ...f,
+        status: normalizedStatus,
+        assigneeId: selectedUserExists ? f.assigneeId : userAssignees[0]?.id || f.assigneeId
+      };
+    });
+  };
 
   const save = () => {
     if (!form.title.trim()) return;
     if (form.status === "done" && !(form.comments || []).length) {
-      onNotify?.("Add at least one comment before closing this task as done.");
+      onNotify?.("Add at least one comment before marking this task as done.");
       return;
     }
     const tags = tagInput.split(",").map(s => s.trim()).filter(Boolean);
-    const admin = state.users.find(u => u.role === "admin");
     const normalizedStatus = selectableStatuses.includes(form.status) ? form.status : "todo";
+    if (normalizedStatus === "review" && !adminUser) {
+      onNotify?.("No admin user is available to receive review tasks.");
+      return;
+    }
+    const selectedUserAssignee = userAssignees.some(u => u.id === form.assigneeId)
+      ? form.assigneeId
+      : userAssignees[0]?.id || form.assigneeId;
     const normalizedForm = {
       ...form,
       status: normalizedStatus,
-      assigneeId: normalizedStatus === "review" && admin ? admin.id : form.assigneeId
+      assigneeId: normalizedStatus === "review" ? adminUser.id : selectedUserAssignee
     };
     const next = { ...state };
     if (isNew) {
@@ -371,7 +408,7 @@ export function TaskEditModal({ task, state, setState, onClose, currentUser, onN
             <div className="field">
               <div className="field-label">Assignee</div>
               <select className="field-input" value={form.assigneeId} onChange={e => set("assigneeId", e.target.value)}>
-                {state.users.filter(u => u.role === "user").map(u =>
+                {assigneeOptions.map(u =>
                   <option key={u.id} value={u.id}>{u.name}</option>
                 )}
               </select>
@@ -397,7 +434,7 @@ export function TaskEditModal({ task, state, setState, onClose, currentUser, onN
             </div>
             <div className="field">
               <div className="field-label">Status</div>
-              <select className="field-input" value={selectableStatuses.includes(form.status) ? form.status : "todo"} onChange={e => set("status", e.target.value)}>
+              <select className="field-input" value={selectedStatus} onChange={e => setStatus(e.target.value)}>
                 {selectableStatuses.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
               </select>
             </div>

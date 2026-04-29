@@ -73,8 +73,7 @@ export function StatusBadge({ status }) {
     "todo": "badge-status badge-todo",
     "in-progress": "badge-progress",
     "review": "badge-review",
-    "done": "badge-done",
-    "blocked": "badge-blocked"
+    "done": "badge-done"
   };
   return (
     <span className={`badge ${map[status] || "badge-status"}`}>

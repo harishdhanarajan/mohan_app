@@ -84,7 +84,7 @@ export function KanbanView({ tasks, state, onOpen, onMoveTask }) {
   return (
     <div className="kanban">
       {cols.map(col => {
-        const colTasks = tasks.filter(t => t.status === col.id || (col.id === "todo" && t.status === "blocked"));
+        const colTasks = tasks.filter(t => t.status === col.id);
         return (
           <div
             className={`kanban-col ${dragOver === col.id ? "drag-over" : ""}`}

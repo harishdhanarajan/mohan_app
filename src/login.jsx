@@ -1,39 +1,64 @@
 import React from 'react';
-import { signInWithEmail, signUpFirstAdmin } from './data.js';
+import { hasAnyAdmin, signInWithEmail, signUpFirstAdmin } from './data.js';
 
-export function Login({ state, onAuthChanged }) {
-  const isSetup = state.users.length === 0;
+export function Login({ onAuthChanged }) {
+  const [mode, setMode] = React.useState("loading"); // "loading" | "login" | "setup"
   const [name, setName] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState("");
 
+  React.useEffect(() => {
+    let cancelled = false;
+    hasAnyAdmin()
+      .then(has => { if (!cancelled) setMode(has ? "login" : "setup"); })
+      .catch(e => {
+        if (cancelled) return;
+        console.error(e);
+        // If we can't tell, default to login — never silently expose the setup form.
+        setMode("login");
+        setErr("Couldn't reach the server. Please retry.");
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const isSetup = mode === "setup";
+
   const submit = async (e) => {
     e && e.preventDefault();
-    if (busy) return;
+    if (busy || mode === "loading") return;
     setErr("");
 
     if (isSetup) {
       if (!name.trim() || !email.trim() || !password.trim()) {
-        setErr("Name, email, and password are required.");
+        setErr("Name, User ID, and password are required.");
         return;
       }
     } else if (!email.trim() || !password.trim()) {
-      setErr("Email and password are required.");
+      setErr("User ID and password are required.");
       return;
     }
 
     setBusy(true);
     try {
       if (isSetup) {
+        const stillEmpty = !(await hasAnyAdmin());
+        if (!stillEmpty) {
+          setMode("login");
+          throw new Error("An admin already exists. Please sign in instead.");
+        }
         await signUpFirstAdmin({ name, email, password });
       } else {
         await signInWithEmail(email, password);
       }
       onAuthChanged?.();
     } catch (error) {
-      setErr(error?.message || "Authentication failed.");
+      if (!isSetup) {
+        setErr("Invalid User ID or password. Contact Mohanram Musuwathy for further details.");
+      } else {
+        setErr(error?.message || "Authentication failed.");
+      }
     } finally {
       setBusy(false);
     }
@@ -43,20 +68,23 @@ export function Login({ state, onAuthChanged }) {
     <div className="login-shell">
       <div className="login-pane">
         <form className="login-form" onSubmit={submit}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 32 }}>
+          <div className="login-brand">
             <div className="brand-mark" style={{ width: 32, height: 32, fontSize: 13 }}>M</div>
             <div>
               <div style={{ fontWeight: 600, fontSize: 15 }}>MYT</div>
-              <div style={{ fontSize: 11.5, color: "var(--text-tertiary)" }}>My Task List</div>
             </div>
           </div>
 
-          <h1>{isSetup ? "Create your admin account" : "Sign in to your workspace"}</h1>
-          <div className="sub">
-            {isSetup
-              ? "Start with an empty workspace and add your own team, projects, and tasks."
-              : "Manage tasks, track team workload, and stay on top of priorities."}
-          </div>
+          <h1>
+            {mode === "loading"
+              ? "Loading..."
+              : isSetup
+                ? "Create your admin account"
+                : "Sign in to MYT"}
+          </h1>
+          {isSetup && (
+            <div className="sub">No admin exists yet. This first account will be the workspace owner.</div>
+          )}
 
           {isSetup && (
             <div className="field">
@@ -72,14 +100,15 @@ export function Login({ state, onAuthChanged }) {
           )}
 
           <div className="field">
-            <div className="field-label">Email</div>
+            <div className="field-label">User ID</div>
             <input
               className="field-input"
-              type="email"
+              type="text"
               value={email}
               onChange={e => setEmail(e.target.value)}
-              placeholder="Email address"
+              placeholder="User ID"
               autoFocus={!isSetup}
+              disabled={mode === "loading"}
             />
           </div>
           <div className="field">
@@ -90,44 +119,24 @@ export function Login({ state, onAuthChanged }) {
               value={password}
               onChange={e => setPassword(e.target.value)}
               placeholder="Password"
+              disabled={mode === "loading"}
             />
           </div>
 
           {err && (
-            <div style={{
-              background: "var(--danger-soft)", color: "var(--danger)",
-              padding: "8px 12px", borderRadius: 8, fontSize: 13, marginBottom: 12,
-              border: "1px solid #fecaca"
-            }}>{err}</div>
+            <div className="login-error" role="alert">{err}</div>
           )}
 
-          <button type="submit" className="btn btn-primary btn-block" disabled={busy}>
-            {busy ? "Working…" : isSetup ? "Create workspace" : "Sign in"}
+          <button
+            type="submit"
+            className="btn btn-primary btn-block"
+            disabled={busy || mode === "loading"}
+          >
+            {busy ? "Working..." : isSetup ? "Create workspace" : "Sign in"}
           </button>
         </form>
       </div>
 
-      <div className="login-art">
-        <div className="login-art-grid"></div>
-        <div className="login-mock">
-          <div className="login-mock-head">
-            <div className="login-mock-dot"></div>
-            <div className="login-mock-dot"></div>
-            <div className="login-mock-dot"></div>
-          </div>
-          <div className="login-mock-body">
-            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Workspace</div>
-            <div className="empty" style={{ padding: 18 }}>
-              <div className="empty-title">Empty workspace</div>
-              Add your own projects, team, and tasks after setup.
-            </div>
-          </div>
-        </div>
-        <div className="login-art-content">
-          <h2>Less chasing.<br />More shipping.</h2>
-          <p>A clean, focused workspace for assigning, tracking, and closing tasks across your team.</p>
-        </div>
-      </div>
     </div>
   );
 }

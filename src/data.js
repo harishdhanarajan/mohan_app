@@ -98,6 +98,12 @@ async function syncTable(table, current, prev) {
   }
 }
 
+export async function hasAnyAdmin() {
+  const { data, error } = await supabase.rpc("workspace_has_admin");
+  if (error) throw error;
+  return Boolean(data);
+}
+
 export async function signInWithEmail(email, password) {
   const { error } = await supabase.auth.signInWithPassword({
     email: email.trim().toLowerCase(),
@@ -172,8 +178,7 @@ export const STATUS_LABELS = {
   "todo": "To Do",
   "in-progress": "In Progress",
   "review": "Review",
-  "done": "Done",
-  "blocked": "Blocked"
+  "done": "Done"
 };
 
 export const PRIORITY_LABELS = {
@@ -182,5 +187,5 @@ export const PRIORITY_LABELS = {
   "low": "Low"
 };
 
-export const STATUS_ORDER = ["todo", "in-progress", "review", "blocked", "done"];
+export const STATUS_ORDER = ["todo", "in-progress", "review", "done"];
 export const PRIORITY_ORDER = ["high", "medium", "low"];

@@ -39,7 +39,6 @@
   --status-progress: #2563eb;
   --status-review: #7c3aed;
   --status-done: #16a34a;
-  --status-blocked: #dc2626;
 
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
   --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
@@ -469,8 +468,6 @@ input, textarea, select { outline: none; }
 .badge-review .badge-dot { background: var(--status-review); }
 .badge-done { background: var(--success-soft); color: var(--success); }
 .badge-done .badge-dot { background: var(--success); }
-.badge-blocked { background: var(--danger-soft); color: var(--danger); }
-.badge-blocked .badge-dot { background: var(--danger); }
 
 /* Task list table */
 .tasklist {
@@ -856,27 +853,57 @@ textarea.field-input { resize: vertical; min-height: 80px; line-height: 1.5; }
 /* Login */
 .login-shell {
   min-height: 100vh;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-subtle);
+  padding: 24px;
 }
 .login-pane {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 40px;
+  width: 100%;
 }
-.login-form { width: 100%; max-width: 360px; }
+.login-form {
+  width: 100%;
+  max-width: 380px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  padding: 32px;
+}
+.login-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 28px;
+}
 .login-form h1 {
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 600;
-  margin: 0 0 6px;
-  letter-spacing: -0.02em;
+  margin: 0 0 24px;
+  letter-spacing: 0;
+  text-align: center;
 }
 .login-form .sub {
   color: var(--text-tertiary);
   font-size: 14px;
-  margin-bottom: 28px;
+  line-height: 1.5;
+  margin: -12px 0 24px;
+  text-align: center;
+}
+.login-error {
+  background: var(--danger-soft);
+  color: var(--danger);
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  margin-bottom: 12px;
+  border: 1px solid #fecaca;
 }
 .login-art {
   background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 60%, #3b82f6 100%);
@@ -1096,6 +1123,19 @@ textarea.field-input { resize: vertical; min-height: 80px; line-height: 1.5; }
   color: var(--text-secondary);
   font-size: 13.5px;
   line-height: 1.55;
+}
+.delete-code-box {
+  margin-top: 4px;
+  padding: 12px;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  background: var(--danger-soft);
+}
+.field-help {
+  margin-top: 6px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 /* Notif dropdown */

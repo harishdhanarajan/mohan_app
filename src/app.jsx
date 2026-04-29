@@ -227,7 +227,7 @@ function Notifications({ state, setState, onOpen }) {
                 <div className="empty" style={{ padding: 30 }}><div className="empty-title">No notifications</div>You're all caught up.</div>
               ) : state.notifications.slice(0, 12).map(n => {
                 const actor = state.users.find(u => u.id === n.actorId);
-                const iconMap = { done: "check", review: "edit", blocked: "flag", comment: "chat" };
+                const iconMap = { done: "check", review: "edit", comment: "chat" };
                 return (
                   <div key={n.id} className="notif-item" onClick={() => { setOpen(false); onOpen(n.taskId); markAllRead(); }}>
                     <div className="notif-icon"><Icon name={iconMap[n.kind] || "bell"} size={14} /></div>
@@ -437,14 +437,21 @@ function Workspace({ state, setState, onLogout, tweaks }) {
     if (!task || task.status === newStatus) return false;
     if (task.status === "done") return false;
     if (newStatus === "done" && !(task.comments || []).length) {
-      notify("Add at least one comment before closing this task as done.");
+      notify("Add at least one comment before marking this task as done.");
       return false;
     }
 
-    const admin = state.users.find(u => u.role === "admin");
+    const admin = currentUser.role === "admin" ? currentUser : state.users.find(u => u.role === "admin");
+    if (newStatus === "review" && !admin) {
+      notify("No admin user is available to receive review tasks.");
+      return false;
+    }
+    const firstUser = state.users.find(u => u.role === "user");
     const next = { ...state };
     next.tasks = state.tasks.map(t => {
       if (t.id !== id) return t;
+      const currentAssignee = state.users.find(u => u.id === t.assigneeId);
+      const returningFromReview = task.status === "review" && newStatus !== "review" && currentAssignee?.role === "admin" && firstUser;
       const patch = {
         status: newStatus,
         activity: [...(t.activity || []), {
@@ -453,12 +460,19 @@ function Workspace({ state, setState, onLogout, tweaks }) {
           text: `marked as ${STATUS_LABELS[newStatus]}`
         }]
       };
-      if (newStatus === "review" && admin) {
+      if (newStatus === "review") {
         patch.assigneeId = admin.id;
         patch.activity = [...patch.activity, {
           ts: new Date().toISOString().slice(0, 16),
           actor: currentUser.id,
           text: `assigned back to ${admin.name}`
+        }];
+      } else if (returningFromReview) {
+        patch.assigneeId = firstUser.id;
+        patch.activity = [...patch.activity, {
+          ts: new Date().toISOString().slice(0, 16),
+          actor: currentUser.id,
+          text: `reassigned to ${firstUser.name}`
         }];
       }
       return { ...t, ...patch };
@@ -547,7 +561,7 @@ function Workspace({ state, setState, onLogout, tweaks }) {
             <UsersPage state={state} setState={setState} onOpenTask={setOpenTaskId} onNotify={notify} onRequestConfirm={requestConfirm} />
           )}
           {page === "projects" && isAdmin && (
-            <ProjectsPage state={state} setState={setState} onOpenTask={setOpenTaskId} onRequestConfirm={requestConfirm} />
+            <ProjectsPage state={state} setState={setState} onOpenTask={setOpenTaskId} onNotify={notify} onRequestConfirm={requestConfirm} />
           )}
           {(page === "tasks" || page === "kanban" || page === "calendar") && (
             <>
@@ -640,7 +654,7 @@ export function App() {
   if (!currentUser) {
     return (
       <>
-        <Login state={state} onAuthChanged={refresh} />
+        <Login onAuthChanged={refresh} />
         <TweaksPanel title="Tweaks">
           <TweakSection label="Display">
             <TweakToggle label="Show admin AI chat" value={tweaks.showChat} onChange={v => setTweak("showChat", v)} />

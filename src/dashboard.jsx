@@ -15,7 +15,7 @@ function KPI({ label, value, trend, trendDir }) {
 }
 
 function WorkloadWidget({ state }) {
-  const userTasks = state.users.filter(u => u.role === "user").map(u => {
+  const userTasks = state.users.map(u => {
     const tasks = state.tasks.filter(t => t.assigneeId === u.id && t.status !== "done");
     const high = tasks.filter(t => t.priority === "high").length;
     const med = tasks.filter(t => t.priority === "medium").length;
@@ -28,7 +28,7 @@ function WorkloadWidget({ state }) {
       <div className="card-header">
         <div>
           <div className="card-title">Team workload</div>
-          <div className="card-sub">Open tasks per assignee, by priority</div>
+          <div className="card-sub">Open tasks per assignee, including admin review work</div>
         </div>
       </div>
       <div className="card-pad" style={{ paddingTop: 6, paddingBottom: 12 }}>
@@ -63,7 +63,7 @@ function WorkloadWidget({ state }) {
 }
 
 function StatusDonut({ state }) {
-  const counts = { todo: 0, "in-progress": 0, review: 0, blocked: 0, done: 0 };
+  const counts = { todo: 0, "in-progress": 0, review: 0, done: 0 };
   state.tasks.forEach(t => { counts[t.status] = (counts[t.status] || 0) + 1; });
   const total = state.tasks.length;
   const divisor = total || 1;
@@ -72,7 +72,6 @@ function StatusDonut({ state }) {
     "todo": "#94a3b8",
     "in-progress": "#2563eb",
     "review": "#7c3aed",
-    "blocked": "#dc2626",
     "done": "#16a34a"
   };
 
@@ -274,7 +273,7 @@ export function Dashboard({ state, onOpen, layout }) {
         <div className="kpi-grid">
           <KPI label="Overdue" value={overdue} trend={overdue > 0 ? "Needs attention" : "On track"} trendDir={overdue > 0 ? "down" : "up"} />
           <KPI label="Due today" value={dueToday} trend="Across the team" />
-          <KPI label="In progress" value={inProgress} trend={`${state.users.filter(u => u.role === "user").length} contributors`} />
+          <KPI label="In progress" value={inProgress} trend={`${state.users.length} assignees`} />
           <KPI label="Completed" value={completed} trend="All time" trendDir="up" />
         </div>
         <div className="dash-row full">
@@ -298,7 +297,7 @@ export function Dashboard({ state, onOpen, layout }) {
       <div className="kpi-grid">
         <KPI label="Overdue" value={overdue} trend={overdue > 0 ? "Needs attention" : "On track"} trendDir={overdue > 0 ? "down" : "up"} />
         <KPI label="Due today" value={dueToday} trend="Across the team" />
-        <KPI label="In progress" value={inProgress} trend={`${state.users.filter(u => u.role === "user").length} contributors`} />
+        <KPI label="In progress" value={inProgress} trend={`${state.users.length} assignees`} />
         <KPI label="Completed" value={completed} trend="All time" trendDir="up" />
       </div>
       <div className="dash-row cols-2">

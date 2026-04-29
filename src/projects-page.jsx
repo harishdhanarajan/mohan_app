@@ -18,7 +18,7 @@ function projectIdFromName(name) {
   return `p-${slug || "project"}-${Date.now()}`;
 }
 
-export function ProjectsPage({ state, setState, onOpenTask, onRequestConfirm }) {
+export function ProjectsPage({ state, setState, onOpenTask, onNotify, onRequestConfirm }) {
   const [editing, setEditing] = React.useState(null);
   const [creating, setCreating] = React.useState(false);
   const today = todayISO();
@@ -36,17 +36,19 @@ export function ProjectsPage({ state, setState, onOpenTask, onRequestConfirm }) 
 
   const removeProject = (project) => {
     const stats = projectStats(project.id);
-    const suffix = stats.total ? ` ${stats.total} task${stats.total === 1 ? "" : "s"} will become unassigned.` : "";
+    if (stats.total > 0) {
+      onNotify?.(`Cannot delete ${project.name}. Remove or move the ${stats.total} task${stats.total === 1 ? "" : "s"} under this project first.`);
+      return;
+    }
     onRequestConfirm?.({
       title: "Delete project",
-      message: `Delete ${project.name}?${suffix}`,
+      message: `Delete ${project.name}? This project has no tasks assigned.`,
       confirmLabel: "Delete project",
       kind: "danger",
       onConfirm: () => {
         setState({
           ...state,
-          projects: state.projects.filter(p => p.id !== project.id),
-          tasks: state.tasks.map(t => t.projectId === project.id ? { ...t, projectId: null } : t)
+          projects: state.projects.filter(p => p.id !== project.id)
         });
       }
     });
@@ -78,7 +80,7 @@ export function ProjectsPage({ state, setState, onOpenTask, onRequestConfirm }) 
                 <button className="icon-btn" onClick={() => setEditing(project)} title="Edit project">
                   <Icon name="edit" size={14} />
                 </button>
-                <button className="icon-btn" onClick={() => removeProject(project)} title="Delete project" style={{ color: "var(--danger)" }}>
+                <button className="icon-btn" onClick={() => removeProject(project)} title={stats.total > 0 ? "Move or remove all tasks before deleting this project" : "Delete project"} style={{ color: "var(--danger)" }}>
                   <Icon name="trash" size={14} />
                 </button>
               </div>
